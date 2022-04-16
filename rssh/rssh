@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+
+RSSH_HOME="$HOME/.config/rssh"
+RSSH_POSTFIX="_rssh"
+DEFAULT_PORT=8080
+
+# profile remote_port full_url ssh_cmd host|localhost
+PROFILES=(
+  "dev 20001 dev.markhendriks.nl mhnas"
+  "dev2 20002 dev2.markhendriks.nl mhnas"
+  "dev3 20003 dev3.markhendriks.nl mhnas"
+  "tcd1 20011 d32b45664ffa.thecheerfuldev.nl mhnas"
+  "tcd2 20012 ec7fed9d2e90.thecheerfuldev.nl mhnas"
+  "tcd3 20013 b4bd5e4ea432.thecheerfuldev.nl mhnas"
+)
+
+if [ ! -d "$RSSH_HOME" ]; then
+  mkdir -p "$RSSH_HOME"
+fi
+
+print_help() {
+  echo "rssh 2.3 Mark Hendriks <thecheerfuldev>"
+  echo "Usage: rssh <command> [args]"
+  echo ""
+  echo "  <profile> [port]              Start the provided profile for provided port,"
+  echo "                                or the default ($DEFAULT_PORT) if none is provided."
+  echo "  stop [profile]                Stop the given profile or all if none provided."
+  echo "  ls                            List profiles."
+  echo "  ps                            List running profiles."
+  echo "  help                          This very helpful help message."
+  echo ""
+}
+
+start_profile() {
+  profile=${1}
+  local_port=${2}
+
+  if ! [ "$local_port" -eq "$local_port" ] 2>/dev/null || [ "$local_port" -lt 1 ] || [ "$local_port" -gt 65535 ]; then
+    echo "Please provide a valid [local_port]: 1-65535."
+    exit 1
+  fi
+
+  if [ -S "$RSSH_HOME"/"$profile" ]; then
+    echo "Profile [${profile}] is already running."
+    stop_profile "$profile"
+  fi
+
+  for element in "${PROFILES[@]}"; do
+    if [[ $(echo "$element" | cut -d' ' -f1) == "$profile" ]]; then
+      remote_port=$(echo "$element" | cut -d' ' -f2)
+      domain=$(echo "$element" | cut -d' ' -f3)
+      ssh_cmd=$(echo "$element" | cut -d' ' -f4)
+      host=$(echo "$element" | cut -d' ' -f5)
+      if [ -z "$host" ]; then
+        host="localhost"
+      fi
+      break
+    fi
+  done
+
+  if [ -z "$remote_port" ]; then
+    echo "Profile [${profile}] isn't configured properly..."
+    exit 1
+  fi
+
+  echo "Starting profile [${profile}]."
+  ssh -f -N -M -S "${RSSH_HOME}/${profile}" -R "${remote_port}:${host}:${local_port}" "${ssh_cmd}"
+
+  echo "http://$host:$local_port can now be reached at https://${domain}"
+  echo "http://$host:$local_port -> https://${domain}" >"${RSSH_HOME}/${profile}${RSSH_POSTFIX}"
+}
+
+stop_profile() {
+  if [ "$#" -lt 1 ]; then
+    for element in "${PROFILES[@]}"; do
+      stop_profile "$(echo "$element" | cut -d' ' -f1)"
+    done
+    exit 0
+  fi
+
+  profile=${1}
+
+  if [ -S "$RSSH_HOME"/"$profile" ]; then
+    for element in "${PROFILES[@]}"; do
+      if [[ "$element" == *"$profile"* ]]; then
+        ssh_cmd=$(echo "$element" | cut -d' ' -f4)
+        break
+      fi
+    done
+
+    echo "Stopping profile [$profile]."
+    ssh -S "$RSSH_HOME"/"$profile" -O exit "$ssh_cmd" 2>/dev/null
+    rm "$RSSH_HOME"/"$profile""$RSSH_POSTFIX" 2>/dev/null
+  fi
+}
+
+ls_profiles_with_active() {
+  echo "Profiles:"
+  for element in "${PROFILES[@]}"; do
+    available_profile=$(echo "${element}" | cut -d' ' -f1)
+    if [ -S "$RSSH_HOME"/"$available_profile" ]; then
+      echo "  ${available_profile} $(cat "${RSSH_HOME}/${available_profile}${RSSH_POSTFIX}")"
+    else
+      echo "  ${available_profile}"
+    fi
+  done
+}
+
+ps_profiles() {
+  echo "Active profiles:"
+  for element in "${PROFILES[@]}"; do
+    available_profile=$(echo "${element}" | cut -d' ' -f1)
+    if [ -S "$RSSH_HOME"/"$available_profile" ]; then
+      echo "  ${available_profile} $(cat "${RSSH_HOME}/${available_profile}${RSSH_POSTFIX}")"
+    fi
+  done
+
+  found_profiles=$(ls "$RSSH_HOME")
+
+  if [ -z "$found_profiles" ]; then
+    echo "  None."
+  fi
+}
+
+profile_exists() {
+  for element in "${PROFILES[@]}"; do
+    if [[ "$element" == *"$1"* ]]; then
+      return
+    fi
+  done
+
+  max_length=$((${#PROFILES[@]} - 1))
+  for ((i = 0; i <= max_length; i++)); do
+    available_profiles+=$(echo "${PROFILES[$i]}" | cut -d' ' -f1)
+    if [ "$i" -lt $max_length ]; then
+      available_profiles+=", "
+    fi
+  done
+
+  echo "Profile [$1] doesn't exist. [$available_profiles]"
+  exit 1
+}
+
+if [ "$#" -eq 0 ]; then
+  print_help
+  exit 1
+fi
+
+if [ "${1}" = "stop" ]; then
+  shift
+  stop_profile "$@"
+  exit 0
+fi
+
+if [ "${1}" = "ls" ]; then
+  ls_profiles_with_active
+  exit 0
+fi
+
+if [ "${1}" = "ps" ]; then
+  ps_profiles
+  exit 0
+fi
+
+if [ "${1}" = "help" ]; then
+  print_help
+  exit 0
+fi
+
+if [ "$#" -eq 2 ]; then
+  profile_exists "$1"
+  start_profile "$@"
+  exit 0
+fi
+
+if [ "$#" -eq 1 ]; then
+  profile_exists "$1"
+  start_profile "$1" "$DEFAULT_PORT"
+  exit 0
+fi
+
+print_help
+exit 1

@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+
+## profiles are saved in the following format:
+
+# FILE_NAME = profile name
+# Each row is a semicolon-separated list of the following values:
+# nodename;platforms;ssh_connection_string(optional: for remote notes only)
+
+# EXAMPLE:
+# Profile awesome has filename ~/.config/dbx/awesome
+# File contents:
+# intel_node;linux/amd64,linux/386;ssh://user@domain.com
+# arm64_node;linux/arm64/v8;
+# armv7_node;linux/arm/v7;ssh://rpi # this is the host in the ssh config
+
+DBX_HOME="$HOME/.config/dbx"
+if [ ! -d "$DBX_HOME" ]; then
+  mkdir -p "$DBX_HOME"
+fi
+
+DBX_CURRENT_FILE="$DBX_HOME/.current"
+
+dbx-enable() {
+  profile="${1}"
+  index=0
+  profile_file="${DBX_HOME}/${profile}"
+
+  if [ ! -f "$profile_file" ]; then
+    echo "Profile ${profile} does not exist."
+    exit 1
+  fi
+
+  if [ -f "$DBX_CURRENT_FILE" ]; then
+    current_profile=$(cat "${DBX_CURRENT_FILE}")
+    if [ "${current_profile}" == "${profile}" ]; then
+      echo "Profile ${profile} is already running."
+      exit 0
+    fi
+    echo "Profile ${current_profile} is currently running. Stop it first."
+    exit 1
+  fi
+
+  echo "Starting profile ${profile}."
+
+  profile_input=$(<"$profile_file")
+
+  for line in ${profile_input}; do
+    OIFS="$IFS"
+    IFS=';' read -r -a profile_array <<<"$line"
+    node_name="${profile_array[0]}"
+    platforms="${profile_array[1]}"
+    ssh_connection_string="${profile_array[2]}"
+    if [ $index -eq 0 ] && [ -z "$ssh_connection_string" ]; then
+      docker buildx create --name "${profile}" --node "${node_name}" --platform "${platforms}" --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=10000000 --driver-opt env.BUILDKIT_STEP_LOG_MAX_SPEED=10000000
+    elif [ $index -eq 0 ]; then
+      docker buildx create --name "${profile}" --node "${node_name}" --platform "${platforms}" "${ssh_connection_string}" --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=10000000 --driver-opt env.BUILDKIT_STEP_LOG_MAX_SPEED=10000000
+    else
+      docker buildx create --name "${profile}" --append --node "${node_name}" --platform "${platforms}" "${ssh_connection_string}" --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=10000000 --driver-opt env.BUILDKIT_STEP_LOG_MAX_SPEED=10000000
+    fi
+    index=$((index + 1))
+    IFS="$OIFS"
+  done
+
+  docker buildx use "${profile}"
+  docker buildx inspect --bootstrap
+
+  echo "${profile}" >"${DBX_CURRENT_FILE}"
+}
+
+dbx-disable() {
+  echo "Stopping profile ${1}."
+  docker buildx rm "${1}"
+  rm "${DBX_CURRENT_FILE}" &>/dev/null
+}
+
+dbx-ls() {
+  echo "Available profiles:"
+  for profile in $(ls "$DBX_HOME"); do
+    platforms=""
+    profile_file="${DBX_HOME}/${profile}"
+    profile_input=$(<"$profile_file")
+
+    index=0
+    number_of_lines=$(echo "${profile_input}" | wc -l)
+
+    for line in ${profile_input}; do
+      OIFS="$IFS"
+      IFS=';' read -r -a profile_array <<<"$line"
+      platforms+="${profile_array[1]}"
+      IFS="$OIFS"
+      if [ $index -lt $((number_of_lines - 1)) ]; then
+        platforms+=","
+      fi
+      index=$((index + 1))
+    done
+    formatted_profile=$(printf "%-15s" "${profile}")
+    if [ -f "$DBX_CURRENT_FILE" ] && [ "${profile}" == "$(<"$DBX_CURRENT_FILE")" ]; then
+      echo "* ${formatted_profile} -> ${platforms}"
+    else
+      echo "  ${formatted_profile} -> ${platforms}"
+    fi
+  done
+}
+
+dbx-build() {
+  if [ $# -lt 2 ]; then
+    echo "Usage: dbx-build <tag> [args] <path>"
+    exit 1
+  fi
+
+  if [ ! -f "$DBX_CURRENT_FILE" ]; then
+    echo "No profile is running."
+    exit 1
+  fi
+
+  if ! [[ "${1}" =~ ^[a-zA-Z]+\/[a-zA-Z]+(:[a-zA-Z0-9.\-_]+$|$) ]]; then
+    echo "Invalid tag name."
+    exit 1
+  fi
+
+  profile=$(<"${DBX_CURRENT_FILE}")
+  profile_file="${DBX_HOME}/${profile}"
+  profile_input=$(<"$profile_file")
+
+  index=0
+  number_of_lines=$(echo "${profile_input}" | wc -l)
+
+  for line in ${profile_input}; do
+    OIFS="$IFS"
+    IFS=';' read -r -a profile_array <<<"$line"
+    platforms+="${profile_array[1]}"
+    IFS="$OIFS"
+    if [ $index -lt $((number_of_lines - 1)) ]; then
+      platforms+=","
+    fi
+    index=$((index + 1))
+  done
+
+  echo "Building with profile ${profile}."
+  echo "Platforms: ${platforms}"
+  echo "Tag: ${1}"
+
+  docker buildx build --platform ${platforms} --push --tag ${*}
+}
+
+print_help() {
+  echo "Usage: dbx <command> [<args>]"
+  echo ""
+  echo "  start <profile>                                 Start the provided profile."
+  echo "  stop                                            Stop the current profile."
+  echo "  ls                                              List available profiles."
+  echo "  build <tag> [args] <path>                       Build and push a multi-platform image,"
+  echo "                                                    and tag it with the provided tag."
+  echo ""
+}
+
+if [ "${1}" == "start" ]; then
+  if [ -z "${2}" ]; then
+    echo "No profile provided."
+    exit 1
+  fi
+  dbx-enable "${2}"
+  exit 0
+elif [ "${1}" == "stop" ]; then
+  if [ -n "${2}" ]; then
+    dbx-disable "${2}"
+    exit 0
+  elif [ -f "${DBX_CURRENT_FILE}" ]; then
+    dbx-disable "$(<"${DBX_CURRENT_FILE}")"
+    exit 0
+  else
+    echo "No profile is running."
+    exit 1
+  fi
+  exit 0
+elif [ "${1}" == "ls" ]; then
+  dbx-ls
+  exit 0
+elif [ "${1}" == "build" ]; then
+  shift
+  dbx-build "${@}"
+  exit 0
+else
+  print_help
+  exit 1
+fi
+
+print_help
+exit 0
