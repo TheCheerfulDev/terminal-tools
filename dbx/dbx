@@ -80,19 +80,14 @@ dbx-ls() {
     profile_file="${DBX_HOME}/${profile}"
     profile_input=$(<"$profile_file")
 
-    index=0
-    number_of_lines=$(echo "${profile_input}" | wc -l)
-
     for line in ${profile_input}; do
       OIFS="$IFS"
       IFS=';' read -r -a profile_array <<<"$line"
-      platforms+="${profile_array[1]}"
+      platforms+="[${profile_array[0]}]: "
+      platforms+="${profile_array[1]} "
       IFS="$OIFS"
-      if [ $index -lt $((number_of_lines - 1)) ]; then
-        platforms+=","
-      fi
-      index=$((index + 1))
     done
+
     formatted_profile=$(printf "%-15s" "${profile}")
     if [ -f "$DBX_CURRENT_FILE" ] && [ "${profile}" == "$(<"$DBX_CURRENT_FILE")" ]; then
       echo "* ${formatted_profile} -> ${platforms}"
@@ -101,6 +96,8 @@ dbx-ls() {
     fi
   done
 }
+
+# [mbp_m1 -> linux/arm64 | nas_intel -> linux/amd64]
 
 dbx-build() {
   if [ $# -lt 2 ]; then
