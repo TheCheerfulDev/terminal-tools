@@ -146,11 +146,11 @@ dbx-build() {
 print_help() {
   echo "Usage: dbx <command> [<args>]"
   echo ""
-  echo "  start <profile>                                 Start the provided profile."
-  echo "  stop                                            Stop the current profile."
-  echo "  ls                                              List available profiles."
-  echo "  build <tag> [args] <path>                       Build and push a multi-platform image,"
-  echo "                                                    and tag it with the provided tag."
+  echo "  start <profile>                 Start the provided profile."
+  echo "  stop                            Stop the current profile."
+  echo "  ls                              List available profiles."
+  echo "  build <tag> [args] <path>       Build and push a multi-platform image,"
+  echo "                                    and tag it with the provided tag."
   echo ""
 }
 
