@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+
+if [ -z "${1}" ]; then
+  file="Dockerfile"
+else
+  file="${1}"
+fi
+recomendations=$(hadolint "${file}")
+echo "$recomendations"
+if [ -z "$recomendations" ]; then
+  echo "No recomendations"
+  exit 0
+fi
+
+OLDIFS=$IFS
+IFS=$'\n' read -rd '' -a array <<<"${recomendations}"
+IFS=$OLDIFS
+
+regex="^.*:([0-9]+).*$"
+
+for line in "${array[@]}"; do
+  if [[ $line =~ $regex ]]; then
+    if [ -n "${highlight_lines}" ]; then
+      highlight_lines+=" "
+    fi
+    highlight_lines+="-H ${BASH_REMATCH[1]}"
+  fi
+done
+
+if [ -n "${highlight_lines}" ]; then
+  command="bat $highlight_lines ${file}"
+  sh -c "${command}"
+  exit 0
+fi
