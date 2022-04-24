@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+
+export SDKMAN_DIR="$HOME/.sdkman"
+[[ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ]] && source "$SDKMAN_DIR/bin/sdkman-init.sh"
+
+JDK_CONFIG_HOME="$HOME/.config/jdk"
+SDKMAN_JAVA_HOME="$HOME/.sdkman/candidates/java"
+
+if [ ! -d "$JDK_CONFIG_HOME" ]; then
+  mkdir -p "$JDK_CONFIG_HOME"
+fi
+
+install_jdk() {
+  if [ -z "$1" ]; then
+    sdk update java &>/dev/null
+    full_candidates=$(sdk list java)
+    full_candidates="${full_candidates}"
+
+    OUTERIFS="$IFS"
+    IFS=$'\n'
+    candidates=()
+    for line in ${full_candidates}; do
+      OIFS="$IFS"
+      IFS='|' read -r -a candidate_array <<<"$line"
+      candidates+=($(echo "${candidate_array[5]}" | xargs))
+      IFS="$OIFS"
+    done
+    IFS="$OUTERIFS"
+
+    unset 'candidates[0]}'
+    version=$(printf '%s\n' JDK "${candidates[@]}" | yank)
+    if [ -z "$version" ]; then
+      exit 1
+    fi
+
+    echo "What alias(es) do you want to use for this JDK? (space separated)"
+    read -p "[Leave empty for none]: " -r -a aliases
+
+  else
+    version=${1}
+    aliases=("$@")
+  fi
+
+  sdk install java "$version" || true
+
+  jenv add "${version}" "${SDKMAN_JAVA_HOME}/${version}"
+  touch "${JDK_CONFIG_HOME}/${version}"
+  shift
+  for alias in "${aliases[@]}"; do
+    jenv add "${alias}" "${SDKMAN_JAVA_HOME}/${version}"
+    if [ "${alias}" != "${version}" ]; then
+      echo "${version}" >"${JDK_CONFIG_HOME}/${alias}"
+    else
+      touch "${JDK_CONFIG_HOME}/${version}"
+    fi
+  done
+  sdk flush &>/dev/null
+}
+
+do_uninstall() {
+  version=${1}
+  jenv remove "${version}"
+  sdk uninstall java "${version}"
+
+  rm -f "${JDK_CONFIG_HOME}/${version}" &>/dev/null
+}
+
+uninstall_alias() {
+  echo "Removing alias $1 for JDK $2"
+  alias_to_remove=${1}
+  jenv remove "${alias_to_remove}"
+  rm -f "${JDK_CONFIG_HOME}/${alias_to_remove}" &>/dev/null
+}
+
+#uninstall entry point
+uninstall_jdk() {
+  version=${1}
+  if [ -z "$version" ]; then
+    echo "No version specified. Please specify a version to uninstall."
+    exit 1
+  fi
+
+  if [ ! -f "${JDK_CONFIG_HOME}/${version}" ]; then
+    echo "No such version installed: ${version}"
+    exit 1
+  fi
+  # If alias, only remove the alias
+  if [ -s "${JDK_CONFIG_HOME}/${1}" ]; then
+    alias_to_remove=$(cat "${JDK_CONFIG_HOME}/${version}")
+    uninstall_alias "${version}" "${alias_to_remove}"
+    exit 0
+  fi
+  # check if aliases have this version
+  for full_path in "${JDK_CONFIG_HOME}"/*; do
+    if [ "$(basename "$full_path")" != "${version}" ] && [ "$(cat "$full_path")" == "${version}" ]; then
+      uninstall_alias "$(basename "$full_path")" "${version}"
+    fi
+  done
+  do_uninstall "${version}"
+  sdk flush &>/dev/null
+}
+
+ls_jdk() {
+  echo "Installed JDKs:"
+  for full_path in "${JDK_CONFIG_HOME}"/*; do
+
+    formatted_version=$(printf "%-15s" "$(basename "${full_path}")")
+    if [ -s "$full_path" ]; then
+      echo "  $formatted_version -> $(cat "$full_path")"
+    else
+      echo "  $formatted_version"
+    fi
+  done
+}
+
+if [ "$1" == "install" ]; then
+  shift
+  install_jdk "$@"
+elif [ "$1" == "uninstall" ]; then
+  uninstall_jdk "$2"
+elif [ "$1" == "ls" ]; then
+  ls_jdk
+elif [ "$1" == "help" ]; then
+  echo "Usage: jdk <command> [<args>]"
+  echo ""
+  echo "Commands:"
+  echo "  install [<version>] [<alias> ...]   Install a JDK version. If no version is specified, you can select one interactively."
+  echo "  uninstall <version>                 Uninstall a JDK version."
+  echo "  ls                                  List installed JDK versions."
+  echo "  help                                Show this help."
+  echo ""
+else
+  echo "Unknown command: $1"
+  exit 1
+fi
