@@ -13,13 +13,13 @@ fi
 install_jdk() {
   if [ -z "$1" ]; then
     sdk update java &>/dev/null
-    full_candidates=$(sdk list java)
-    full_candidates="${full_candidates}"
+    all_candidates=$(sdk list java)
+    all_candidates="${all_candidates}"
 
     OUTERIFS="$IFS"
     IFS=$'\n'
     candidates=()
-    for line in ${full_candidates}; do
+    for line in ${all_candidates}; do
       OIFS="$IFS"
       IFS='|' read -r -a candidate_array <<<"$line"
       candidates+=($(echo "${candidate_array[5]}" | xargs))
@@ -127,13 +127,51 @@ ls_jdk() {
   done
 }
 
+active_jdk() {
+  active_jdk_text=$(jenv version)
+  regex="^([a-zA-Z0-9\-_\.]+) .*$"
+
+  if [[ $active_jdk_text =~ $regex ]]; then
+    active_jdk="${BASH_REMATCH[1]}"
+  fi
+  for full_path in "${JDK_CONFIG_HOME}"/*; do
+    if [ "${active_jdk}" == "$(basename "${full_path}")" ]; then
+      echo "  ${active_jdk_text} -> $(cat "$full_path")"
+      exit 0
+    fi
+  done
+  echo "${active_jdk_text}"
+}
+
+local_jdk() {
+  if [ -z "$1" ]; then
+    versions=()
+    for line in "${JDK_CONFIG_HOME}"/*; do
+      versions+=($(basename "${line}"))
+    done
+
+    version=$(printf '%s\n' "${versions[@]}" | yank)
+    if [ -z "$version" ]; then
+      exit 1
+    fi
+
+  else
+    version=${1}
+  fi
+  jenv local "${version}"
+}
+
 if [ "$1" == "install" ]; then
   shift
   install_jdk "$@"
 elif [ "$1" == "uninstall" ]; then
   uninstall_jdk "$2"
+elif [ "$1" == "local" ]; then
+  local_jdk "$2"
 elif [ "$1" == "ls" ]; then
   ls_jdk
+elif [ "$1" == "active" ] || [ "$1" == "ps" ]; then
+  active_jdk
 elif [ "$1" == "help" ]; then
   echo "Usage: jdk <command> [<args>]"
   echo ""
@@ -141,6 +179,7 @@ elif [ "$1" == "help" ]; then
   echo "  install [<version>] [<alias> ...]   Install a JDK version. If no version is specified, you can select one interactively."
   echo "  uninstall <version>                 Uninstall a JDK version."
   echo "  ls                                  List installed JDK versions."
+  echo "  ps, active                          Show the currently active JDK and its jenv origin."
   echo "  help                                Show this help."
   echo ""
 else
