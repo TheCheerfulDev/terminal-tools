@@ -103,9 +103,10 @@ uninstall_jdk() {
 ls_jdk() {
 
   active_jdk=$(jenv version)
-  regex="^([a-zA-Z0-9\-_\.]+) .*$"
+  regex="^(.+) [\(]{1}.*$"
 
   if [[ $active_jdk =~ $regex ]]; then
+    echo "Active JDK from regex: ${BASH_REMATCH[1]}"
     active_jdk="${BASH_REMATCH[1]}"
   fi
   echo "Installed JDKs:"
@@ -129,18 +130,20 @@ ls_jdk() {
 
 active_jdk() {
   active_jdk_text=$(jenv version)
-  regex="^([a-zA-Z0-9\-_\.]+) .*$"
+  regex="^(.+) [\(]{1}.*$"
 
   if [[ $active_jdk_text =~ $regex ]]; then
     active_jdk="${BASH_REMATCH[1]}"
   fi
-  for full_path in "${JDK_CONFIG_HOME}"/*; do
-    if [ "${active_jdk}" == "$(basename "${full_path}")" ]; then
-      echo "  ${active_jdk_text} -> $(cat "$full_path")"
-      exit 0
-    fi
-  done
-  echo "${active_jdk_text}"
+  alias=$(<"${JDK_CONFIG_HOME}/${active_jdk}")
+
+  echo "Active JDK:"
+  if [ -z "${alias}" ]; then
+    echo "  ${active_jdk_text}"
+  else
+    echo "  ${active_jdk_text} -> ${alias}"
+  fi
+  exit 0
 }
 
 local_jdk() {
