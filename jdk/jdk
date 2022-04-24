@@ -101,14 +101,28 @@ uninstall_jdk() {
 }
 
 ls_jdk() {
+
+  active_jdk=$(jenv version)
+  regex="^([a-zA-Z0-9\-_\.]+) .*$"
+
+  if [[ $active_jdk =~ $regex ]]; then
+    active_jdk="${BASH_REMATCH[1]}"
+  fi
   echo "Installed JDKs:"
   for full_path in "${JDK_CONFIG_HOME}"/*; do
 
     formatted_version=$(printf "%-15s" "$(basename "${full_path}")")
-    if [ -s "$full_path" ]; then
-      echo "  $formatted_version -> $(cat "$full_path")"
+
+    if [ "${active_jdk}" == "$(basename "${full_path}")" ]; then
+      formatted_version="* ${formatted_version}"
     else
-      echo "  $formatted_version"
+      formatted_version="  ${formatted_version}"
+    fi
+
+    if [ -s "$full_path" ]; then
+      echo "$formatted_version -> $(cat "$full_path")"
+    else
+      echo "$formatted_version"
     fi
   done
 }
