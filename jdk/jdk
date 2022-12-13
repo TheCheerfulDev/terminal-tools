@@ -27,7 +27,7 @@ select_java_version_from_sdkman() {
   IFS="$OUTERIFS"
 
   unset 'candidates[0]}'
-  version=$(printf '%s\n' JDK "${candidates[@]}" | yank)
+  version=$(printf '%s\n' JDK "${candidates[@]}" | yank -x)
   if [ -z "$version" ]; then
     exit 1
   fi
