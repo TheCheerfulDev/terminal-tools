@@ -10,34 +10,44 @@ if [ ! -d "$JDK_CONFIG_HOME" ]; then
   mkdir -p "$JDK_CONFIG_HOME"
 fi
 
+select_java_version_from_sdkman() {
+  sdk update java &>/dev/null
+  all_candidates=$(sdk list java)
+  all_candidates="${all_candidates}"
+
+  OUTERIFS="$IFS"
+  IFS=$'\n'
+  candidates=()
+  for line in ${all_candidates}; do
+    OIFS="$IFS"
+    IFS='|' read -r -a candidate_array <<<"$line"
+    candidates+=($(echo "${candidate_array[5]}" | xargs))
+    IFS="$OIFS"
+  done
+  IFS="$OUTERIFS"
+
+  unset 'candidates[0]}'
+  version=$(printf '%s\n' JDK "${candidates[@]}" | yank)
+  if [ -z "$version" ]; then
+    exit 1
+  fi
+}
+
+read_alias_from_cli() {
+  echo "What alias(es) do you want to use for this JDK? (space separated)"
+  read -p "[Leave empty for none]: " -r -a aliases
+}
+
 install_jdk() {
   if [ -z "$1" ]; then
-    sdk update java &>/dev/null
-    all_candidates=$(sdk list java)
-    all_candidates="${all_candidates}"
-
-    OUTERIFS="$IFS"
-    IFS=$'\n'
-    candidates=()
-    for line in ${all_candidates}; do
-      OIFS="$IFS"
-      IFS='|' read -r -a candidate_array <<<"$line"
-      candidates+=($(echo "${candidate_array[5]}" | xargs))
-      IFS="$OIFS"
-    done
-    IFS="$OUTERIFS"
-
-    unset 'candidates[0]}'
-    version=$(printf '%s\n' JDK "${candidates[@]}" | yank)
-    if [ -z "$version" ]; then
-      exit 1
-    fi
-
-    echo "What alias(es) do you want to use for this JDK? (space separated)"
-    read -p "[Leave empty for none]: " -r -a aliases
-
+    select_java_version_from_sdkman
+    read_alias_from_cli
+  elif [ "$#" -eq 1 ]; then
+    version=${1}
+    read_alias_from_cli
   else
     version=${1}
+    shift
     aliases=("$@")
   fi
 
@@ -98,6 +108,18 @@ uninstall_jdk() {
   done
   do_uninstall "${version}"
   sdk flush &>/dev/null
+}
+
+update_jdk() {
+  if [ -z "$2" ]; then
+    echo "Usage: jdk update <old_version> <new_version>"
+    exit 1
+  fi
+
+  echo "$1"
+  echo "$2"
+  uninstall_jdk "$1"
+  install_jdk "$2"
 }
 
 ls_jdk() {
@@ -166,25 +188,30 @@ local_jdk() {
 if [ "$1" == "install" ]; then
   shift
   install_jdk "$@"
-elif [ "$1" == "uninstall" ]; then
+elif [ "$1" == "uninstall" ] || [ "$1" == "rm" ]; then
   uninstall_jdk "$2"
+elif [ "$1" == "update" ]; then
+  shift
+  update_jdk "$@"
 elif [ "$1" == "local" ]; then
   local_jdk "$2"
-elif [ "$1" == "ls" ]; then
+elif [ "$1" == "ls" ] || [ "$1" == "list" ]; then
   ls_jdk
 elif [ "$1" == "active" ] || [ "$1" == "ps" ]; then
   active_jdk
-elif [ "$1" == "help" ]; then
+elif [ "$1" == "help" ] || [[ -z $1 ]]; then
   echo "Usage: jdk <command> [<args>]"
   echo ""
   echo "Commands:"
   echo "  install [<version>] [<alias> ...]   Install a JDK version. If no version is specified, you can select one interactively."
-  echo "  uninstall <version>                 Uninstall a JDK version."
-  echo "  ls                                  List installed JDK versions."
+  echo "  rm, uninstall <version>             Uninstall a JDK version."
+  echo "  update <old_version> <new_version>  Update the old version to the new version. Aliases will have to be specified while updating."
+  echo "  ls, list                            List installed JDK versions."
   echo "  ps, active                          Show the currently active JDK and its jenv origin."
   echo "  help                                Show this help."
   echo ""
+  exit 0
 else
-  echo "Unknown command: $1"
+  echo "jdk: no such command: '$1'"
   exit 1
 fi
