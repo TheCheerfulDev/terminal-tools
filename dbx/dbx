@@ -51,11 +51,11 @@ dbx-enable() {
     platforms="${profile_array[1]}"
     ssh_connection_string="${profile_array[2]}"
     if [ $index -eq 0 ] && [ -z "$ssh_connection_string" ]; then
-      docker buildx create --name "${profile}" --node "${node_name}" --platform "${platforms}" --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=10000000 --driver-opt env.BUILDKIT_STEP_LOG_MAX_SPEED=10000000
+      docker buildx create --name "${profile}" --node "${node_name}" --platform "${platforms}"
     elif [ $index -eq 0 ]; then
-      docker buildx create --name "${profile}" --node "${node_name}" --platform "${platforms}" "${ssh_connection_string}" --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=10000000 --driver-opt env.BUILDKIT_STEP_LOG_MAX_SPEED=10000000
+      docker buildx create --name "${profile}" --node "${node_name}" --platform "${platforms}" "${ssh_connection_string}"
     else
-      docker buildx create --name "${profile}" --append --node "${node_name}" --platform "${platforms}" "${ssh_connection_string}" --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=10000000 --driver-opt env.BUILDKIT_STEP_LOG_MAX_SPEED=10000000
+      docker buildx create --name "${profile}" --append --node "${node_name}" --platform "${platforms}" "${ssh_connection_string}"
     fi
     index=$((index + 1))
     IFS="$OIFS"
