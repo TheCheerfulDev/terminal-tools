@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+JDK_VERSION="1.0.0"
 export SDKMAN_DIR="$HOME/.sdkman"
 [[ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ]] && source "$SDKMAN_DIR/bin/sdkman-init.sh"
 
@@ -140,7 +141,7 @@ do_uninstall() {
 }
 
 uninstall_alias() {
-  echo "Removing alias $1 for JDK $2"
+  echo "Removing alias $2 for JDK $1"
   alias_to_remove=${1}
   jenv remove "${alias_to_remove}"
   rm -f "${JDK_CONFIG_HOME}/${alias_to_remove}" &>/dev/null
@@ -338,6 +339,11 @@ jdk_alias() {
 
 }
 
+jdk_version() {
+  echo "jdk (c) 2023 Mark Hendriks <thecheerfuldev>"
+  echo "Version ${JDK_VERSION}"
+}
+
 if [ "$1" == "install" ]; then
   shift
   install_jdk "$@"
@@ -359,6 +365,8 @@ elif [ "$1" == "ls" ] || [ "$1" == "list" ]; then
   ls_jdk
 elif [ "$1" == "active" ] || [ "$1" == "ps" ]; then
   active_jdk
+elif [ "$1" == "version" ]; then
+  jdk_version
 elif [ "$1" == "help" ] || [[ -z $1 ]]; then
   echo "Usage: jdk <command> [<args>]"
   echo ""
@@ -373,6 +381,7 @@ elif [ "$1" == "help" ] || [[ -z $1 ]]; then
   echo "  alias <alias> <version>             Set or override alias for specified version."
   echo "  ls, list                            List installed JDK versions."
   echo "  ps, active                          Show the currently active JDK and its jenv origin."
+  echo "  version                             Show the jdk app version."
   echo "  help                                Show this help."
   echo ""
   exit 0

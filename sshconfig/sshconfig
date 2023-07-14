@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+
+SSHCONFIG_VERSION="0.1.0"
+SSHCONFIG_DIR="$HOME/.config/sshconfig"
+
+if [ ! -d "$SSHCONFIG_DIR" ]; then
+  mkdir -p "$SSHCONFIG_DIR"
+fi
+
+sshconfig_edit() {
+  if [ -z "$1" ]; then
+    config_file=$(ls "$SSHCONFIG_DIR" | yank -x)
+  else
+    config_file="$1"
+  fi
+
+  if [ ! -f "$config_file" ]; then
+    touch "$config_file"
+  fi
+  vi "$SSHCONFIG_DIR/$config_file"
+  exit 0
+}
+
+sshconfig_rm() {
+  if [ -z "$1" ]; then
+    config_file=$(ls "$SSHCONFIG_DIR" | yank -x)
+  else
+    config_file="$1"
+  fi
+
+  if [ ! -f "$config_file" ]; then
+    echo "Config file $config_file not found"
+    exit 1
+  fi
+
+  read -p "Are you sure you want to delete $config_file? [y/N] " -n 1 -r REPLY
+
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    exit 1
+  fi
+
+  rm "$SSHCONFIG_DIR/$config_file"
+  exit 0
+}
+
+sshconfig_ls() {
+  bat --language="SSH Config" "$HOME/.ssh/config" "$SSHCONFIG_DIR"/*
+}
+
+sshconfig_verify() {
+  #Get a list of all the hosts in the config files
+  hosts=$(grep -E "^Host " "$SSHCONFIG_DIR"/* | sed -E "s/^Host (.*)/\1/")
+
+  #Combine with hosts in ~/.ssh/config
+  grep -E "^Host " ~/.ssh/config | sed -E "s/^Host (.*)/\1/" | while read -r line; do
+    hosts+="$line"
+  done
+
+  #Check if a host is only defined once in $hosts
+  for host in $hosts; do
+    count=$(echo "$hosts" | grep -c -w "$host")
+    dublicates=()
+    if [ "$count" -gt 1 ]; then
+      duplicates+=("$host")
+    fi
+  done
+
+  if [ -n "$duplicates" ]; then
+    uniques=($(for v in "${duplicates[@]}"; do echo "$v"; done | sort | uniq | xargs))
+    echo "Duplicates found:"
+    for duplicate in ${uniques[@]}; do
+      echo "  $duplicate"
+    done
+    exit 1
+  fi
+
+  exit 0
+}
+
+sshconfig_version() {
+  echo "sshconfig (c) Mark Hendriks <thecheerfuldev"
+  echo "Version $SSHCONFIG_VERSION"
+}
+
+if [ "$1" == "edit" ]; then
+  echo "Edit config file"
+elif [ "$1" == "ls" ]; then
+  sshconfig_ls
+elif [ "$1" == "rm" ]; then
+  sshconfig_rm "$2"
+elif [ "$1" == "verify" ]; then
+  sshconfig_verify
+elif [ "$1" == "version" ]; then
+  sshconfig_version
+else
+  echo "Usage: sshconfig <command> [args]"
+  echo ""
+  echo "Manually add 'Include ~/.config/sshconfig/*' to the beginning of your ~/.ssh/config file."
+  echo ""
+  echo "Commands:"
+  echo "  edit <config>   Edit a config file."
+  echo "  ls              List all config files."
+  echo "  rm <config>     Remove a config file."
+  echo "  verify          Verify if there are any duplicate hosts in the config files."
+  echo "  version         Show the version of sshconfig."
+  echo ""
+  exit 0
+fi
