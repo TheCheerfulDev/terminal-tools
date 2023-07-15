@@ -25,10 +25,16 @@ function install-jdk() {
   local url="${1}"
   local version="${2}"
 
-  # if $2 is not provided, prompt the user for the version. This version is mandatory
+  # if $2/$version is not provided, prompt the user for the version. This version is mandatory
   while [ -z "${version}" ]; do
     read -p "Please provide the version of the JDK to install: " version
   done
+
+  # Check if version is already installed
+  if [ -f "${JDK_CONFIG_HOME}/${version}" ]; then
+    echo "JDK version ${version} is already installed."
+    exit 1
+  fi
 
   # Download the JDK
   wget -O "${JDK_JAVA_HOME}/${version}.tar.gz" "${url}"
