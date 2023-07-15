@@ -92,7 +92,6 @@ install_jdk() {
     select_java_version_from_sdkman
     read_alias_from_cli
   elif [[ $1 == *"https://"* ]]; then
-    echo "You reached the url installer"
     install_via_url "$1"
   elif [ "$#" -eq 1 ]; then
     version=${1}
@@ -141,7 +140,7 @@ do_uninstall() {
 }
 
 uninstall_alias() {
-  echo "Removing alias $2 for JDK $1"
+  echo "Removing alias $1 for JDK $2"
   alias_to_remove=${1}
   jenv remove "${alias_to_remove}"
   rm -f "${JDK_CONFIG_HOME}/${alias_to_remove}" &>/dev/null
@@ -259,7 +258,7 @@ local_jdk() {
     version=${1}
   fi
   jenv local "${version}"
-  clear
+  echo "Local JDK set to ${version}"
 }
 
 edit_alias() {
@@ -274,11 +273,15 @@ edit_alias() {
       fi
     done
 
+    echo "Select alias to edit:"
     alias=$(printf '%s\n' "${aliases[@]}" | yank)
     if [ -z "$alias" ]; then
       exit 1
     fi
 
+  elif [ ! -f "$JDK_CONFIG_HOME/${1}" ]; then
+    echo "No such alias defined: $1"
+    exit 1
   else
     alias=${1}
   fi
@@ -288,7 +291,20 @@ edit_alias() {
     exit 1
   fi
 
-  vi "$JDK_CONFIG_HOME/${alias}"
+  versions=()
+  for line in "${JDK_CONFIG_HOME}"/*; do
+    if [[ -d $line ]]; then
+      continue
+    fi
+    if [ ! -s "$line" ]; then
+      versions+=($(basename "${line}"))
+    fi
+  done
+
+  echo "Select a version for alias ${alias}:"
+  version=$(printf '%s\n' "${versions[@]}" | yank)
+  echo "${version}" >"$JDK_CONFIG_HOME/${alias}"
+  echo "Alias ${alias} set to ${version}"
 }
 
 jdk_clear() {
@@ -319,7 +335,12 @@ jdk_alias() {
   version=$2
 
   if [ -s "$JDK_CONFIG_HOME/$version" ]; then
-    echo "Version $version is an alias. JDK does not suport alias chaining."
+    echo "Version $version is an alias. JDK does not support alias chaining."
+    exit 1
+  fi
+
+  if [ ! -f "$JDK_CONFIG_HOME/$version" ]; then
+    echo "Version $version does not exist."
     exit 1
   fi
 
@@ -331,11 +352,22 @@ jdk_alias() {
       exit 1
     else
       echo "Overriding alias $new_alias"
-      uninstall_alias $(cat $JDK_CONFIG_HOME/$new_alias) $new_alias
+      uninstall_alias $new_alias $(cat $JDK_CONFIG_HOME/$new_alias)
     fi
 
   fi
   # create alias logic
+  echo "$version" >"$JDK_CONFIG_HOME/$new_alias"
+
+  if [[ -d $SDKMAN_JAVA_HOME/$version ]]; then
+    jenv add "${new_alias}" "${SDKMAN_JAVA_HOME}/${version}"
+  fi
+
+  if [[ -d $JDK_JAVA_HOME/$version ]]; then
+    jenv add "${new_alias}" "${JDK_JAVA_HOME}/${version}"
+  fi
+
+  echo "Alias $new_alias set to $version"
 
 }
 

@@ -1,0 +1,335 @@
+#!/usr/bin/env bash
+# This wrapper is used to manage JDK installations without the need for SDKMAN.
+
+JDK_APP_VERSION="2.0.0"
+JDK_CONFIG_HOME="${HOME}/.config/jdk2"
+JDK_JAVA_HOME="${JDK_CONFIG_HOME}/candidates"
+
+#Create directories if they don't exist yet
+if [ ! -d "${JDK_CONFIG_HOME}" ]; then
+  mkdir -p "${JDK_CONFIG_HOME}"
+fi
+if [ ! -d "${JDK_JAVA_HOME}" ]; then
+  mkdir -p "${JDK_JAVA_HOME}"
+fi
+
+# This function is used to install a JDK version.
+# $1: The url to download the JDK from. Mandatory.
+# $2: The version of the JDK to install. Optional.
+function install-jdk() {
+  if [ -z "${1}" ]; then
+    echo "No URL provided to install JDK from."
+    exit 1
+  fi
+
+  local url="${1}"
+  local version="${2}"
+
+  # if $2 is not provided, prompt the user for the version. This version is mandatory
+  while [ -z "${version}" ]; do
+    read -p "Please provide the version of the JDK to install: " version
+  done
+
+  # Download the JDK
+  wget -O "${JDK_JAVA_HOME}/${version}.tar.gz" "${url}"
+  # Extract the JDK
+  mkdir -p "${JDK_JAVA_HOME}/${version}/${version}.jdk" && tar xf "${JDK_JAVA_HOME}/${version}.tar.gz" -C "${JDK_JAVA_HOME}/${version}/${version}.jdk" --strip-components 1
+  # Create a symlink to the JDK
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/DISCLAIMER" "${JDK_JAVA_HOME}/${version}/DISCLAIMER"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/Welcome.html" "${JDK_JAVA_HOME}/${version}/Welcome.html"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/bin" "${JDK_JAVA_HOME}/${version}/bin"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/conf" "${JDK_JAVA_HOME}/${version}/conf"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/demo" "${JDK_JAVA_HOME}/${version}/demo"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/include" "${JDK_JAVA_HOME}/${version}/include"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/jmods" "${JDK_JAVA_HOME}/${version}/jmods"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/legal" "${JDK_JAVA_HOME}/${version}/legal"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/lib" "${JDK_JAVA_HOME}/${version}/lib"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/man" "${JDK_JAVA_HOME}/${version}/man"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/readme.txt" "${JDK_JAVA_HOME}/${version}/readme.txt"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/release" "${JDK_JAVA_HOME}/${version}/release"
+
+  # Remove the downloaded tarball
+  rm "${JDK_JAVA_HOME}/${version}.tar.gz"
+
+  # Add version to jenv
+  jenv add "${version}" "${JDK_JAVA_HOME}/${version}"
+
+  # Add version to JDK config
+  touch "${JDK_CONFIG_HOME}/${version}"
+
+  alias-for-jdk "${version}"
+}
+
+# This function is the entrypoint to uninstall either a JDK version or alias.
+# $1: The version of the JDK, or the alias to uninstall. Mandatory.
+function uninstall-entrypoint() {
+  local version="${1}"
+  if [ -z "${version}" ]; then
+    echo "No version provided to uninstall JDK or alias."
+    exit 1
+  fi
+  # Check if the version is installed
+  if [ ! -f "${JDK_CONFIG_HOME}/${version}" ]; then
+    echo "JDK version or alias ${version} is not installed."
+    exit 1
+  fi
+
+  # Check if the version is an alias
+  if [ -s "${JDK_CONFIG_HOME}/${version}" ]; then
+    remove-alias-for-jdk "$(cat "${JDK_CONFIG_HOME}/${version}")"
+  else
+    remove-jdk "${version}"
+  fi
+}
+
+# This function is used to list all installed JDK versions.
+function list-jdk() {
+  active_jdk=$(jenv version)
+  regex="^(.+) [\(]{1}.*$"
+
+  if [[ $active_jdk =~ $regex ]]; then
+    active_jdk="${BASH_REMATCH[1]}"
+  fi
+  echo "Installed JDKs:"
+  for full_path in "${JDK_CONFIG_HOME}"/*; do
+    if [[ -d $full_path ]]; then
+      continue
+    fi
+
+    formatted_version=$(printf "%-15s" "$(basename "${full_path}")")
+
+    if [ "${active_jdk}" == "$(basename "${full_path}")" ]; then
+      formatted_version="* ${formatted_version}"
+    else
+      formatted_version="  ${formatted_version}"
+    fi
+
+    if [ -s "$full_path" ]; then
+      echo "$formatted_version -> $(cat "$full_path")"
+    else
+      echo "$formatted_version"
+    fi
+  done
+}
+
+# This function does the actual uninstallation of a JDK and all its aliases.
+function remove-jdk() {
+  local version="${1}"
+  # Prompt the user to confirm the uninstallation
+  read -p "Are you sure you want to uninstall JDK version ${version}? [y/N] " -n1 confirm
+  echo ""
+  if [ "${confirm}" != "y" ]; then
+    echo "Aborting uninstallation."
+    exit 1
+  fi
+
+  # Remove the JDK installation
+  rm -rf "${JDK_JAVA_HOME}/${version}"
+
+  # Remove version from jenv
+  jenv remove "${version}"
+
+  # Remove alias for version
+  remove-alias-for-jdk "${version}"
+
+  # Remove version from jdk
+  rm "${JDK_CONFIG_HOME}/${version}"
+}
+
+# This function removes the alias for provided JDK version.
+# $1: The version of the JDK to remove the alias for. Mandatory.
+function remove-alias-for-jdk() {
+  local version="${1}"
+  if [ -z "${version}" ]; then
+    echo "No version provided to remove alias for JDK."
+    exit 1
+  fi
+
+  for full_path in "${JDK_CONFIG_HOME}"/*; do
+    #Skip directories
+    if [[ -d $full_path ]]; then
+      continue
+    fi
+    #Check if the file is an alias for the provided version, if so, remove it.
+    if [ "$(cat "${full_path}")" == "${version}" ]; then
+      jenv remove "$(basename "${full_path}")"
+      rm "${full_path}"
+      break
+    fi
+  done
+}
+
+# This function is used to set an alias for a JDK version.
+# $1: The version of the JDK to set an alias for. Mandatory.
+function alias-for-jdk() {
+  local version="${1}"
+  if [ -z "${version}" ]; then
+    echo "No version provided to set alias for JDK."
+    exit 1
+  fi
+
+  # Check if the version is installed
+  if [ ! -d "${JDK_JAVA_HOME}/${version}" ]; then
+    echo "JDK version ${version} is not installed."
+    exit 1
+  fi
+
+  # Prompt the user for the alias
+  read -p "Please provide alias for JDK version ${version} (leave empty for none): " alias
+
+  # Set the alias
+  if [ -z "${alias}" ]; then
+    exit 0
+  fi
+
+  # Check if the alias is already in use
+  if [ -f "${JDK_CONFIG_HOME}/${alias}" ]; then
+    echo "Alias ${alias} -> $(cat ${JDK_CONFIG_HOME}/${alias}) is already in use. Remove it with the uninstall command first."
+    exit 1
+  fi
+
+  echo "${version}" >"${JDK_CONFIG_HOME}/${alias}"
+  jenv add "${alias}" "${JDK_JAVA_HOME}/${version}"
+
+}
+
+# This function is used to add an alias to a JDK version.
+# $1: The version of the JDK to add an alias to.
+function add-alias-to-existing-jdk() {
+  local version="${1}"
+  if [ -z "${version}" ]; then
+    local versions=()
+    for line in "${JDK_CONFIG_HOME}"/*; do
+      if [[ -d "${line}" ]]; then
+        continue
+      fi
+      if [ -s "${line}" ]; then
+        continue
+      fi
+      versions+=($(basename "${line}"))
+    done
+    version=$(printf '%s\n' "${versions[@]}" | yank)
+    if [ -z "$version" ]; then
+      echo "No version provided to add alias to JDK."
+      exit 1
+    fi
+
+  fi
+
+  # Check if the version is installed
+  if [ ! -d "${JDK_JAVA_HOME}/${version}" ]; then
+    echo "JDK version ${version} is not installed."
+    exit 1
+  fi
+
+  alias-for-jdk "${version}"
+
+}
+
+function print-version() {
+  echo "jdk2 (c) Mark Hendriks <thecheerfuldev>"
+  echo "Version ${JDK_APP_VERSION}"
+}
+
+function clear-local-jdk() {
+  if [ -f ".java-version" ]; then
+    rm .java-version
+  fi
+}
+
+function active-jdk() {
+  active_jdk_text=$(jenv version)
+  regex="^(.+) [\(]{1}.*$"
+
+  if [[ $active_jdk_text =~ $regex ]]; then
+    active_jdk="${BASH_REMATCH[1]}"
+  fi
+  alias=$(<"${JDK_CONFIG_HOME}/${active_jdk}")
+
+  echo "Active JDK:"
+  if [ -z "${alias}" ]; then
+    echo "  ${active_jdk_text}"
+  else
+    echo "  ${active_jdk_text} -> ${alias}"
+  fi
+  exit 0
+}
+
+# This function is used to set the local JDK version.
+# $1: The version of the JDK to set as local. Optional.
+set-local-jdk() {
+  if [ -z "${1}" ]; then
+    local versions=()
+    for line in "${JDK_CONFIG_HOME}"/*; do
+      if [[ -d $line ]]; then
+        continue
+      fi
+      versions+=($(basename "${line}"))
+    done
+    version=$(printf '%s\n' "${versions[@]}" | yank)
+    if [ -z "$version" ]; then
+      exit 1
+    fi
+  else
+    local version=${1}
+  fi
+  jenv local "${version}"
+  echo "Local JDK set to ${version}"
+}
+
+# This function is used to set the global JDK version.
+# $1: The version of the JDK to set as global. Optional.
+set-global-jdk() {
+  if [ -z "${1}" ]; then
+    local versions=()
+    for line in "${JDK_CONFIG_HOME}"/*; do
+      if [[ -d $line ]]; then
+        continue
+      fi
+      versions+=($(basename "${line}"))
+    done
+    version=$(printf '%s\n' "${versions[@]}" | yank)
+    if [ -z "$version" ]; then
+      exit 1
+    fi
+  else
+    local version=${1}
+  fi
+  jenv global "${version}"
+  echo "Global JDK set to ${version}"
+}
+
+if [ "${1}" == "install" ]; then
+  install-jdk "${2}" "${3}"
+elif [ "${1}" == "uninstall" ] || [ "${1}" == "rm" ]; then
+  uninstall-entrypoint "${2}"
+elif [ "${1}" == "list" ] || [ "${1}" == "ls" ]; then
+  list-jdk
+elif [ "${1}" == "alias" ]; then
+  add-alias-to-existing-jdk "${2}"
+elif [ "${1}" == "clear" ]; then
+  clear-local-jdk
+elif [ "${1}" == "active" ] || [ "${1}" == "ps" ]; then
+  active-jdk
+elif [ "${1}" == "local" ]; then
+  set-local-jdk "${2}"
+elif [ "${1}" == "global" ]; then
+  set-global-jdk "${2}"
+elif [ "${1}" == "version" ]; then
+  print-version
+else
+  # Print the help message
+  echo "Usage: jdk2 <command> [<args>]"
+  echo ""
+  echo "Commands:"
+  echo "  install <url> [<version>]   Install a JDK from the provided URL."
+  echo "  uninstall, rm <version>     Uninstall a JDK version."
+  echo "  alias [<version>]           Add an alias to an existing JDK."
+  echo "  local [<version>]           Set the local application-specific JDK."
+  echo "  global [<version>]          Set the global JDK."
+  echo "  ls, list                    List all installed JDK versions."
+  echo "  ps, active                  Show the currently active JDK and its jenv origin."
+  echo "  clear                       Clears the local application-specific JDK, if one is set in the current directory."
+  echo "  version                     Print the version information of the JDK wrapper."
+  echo ""
+fi
