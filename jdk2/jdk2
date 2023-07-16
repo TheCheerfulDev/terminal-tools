@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # This wrapper is used to manage JDK installations without the need for SDKMAN.
 
-JDK_APP_VERSION="2.0.0"
+JDK_APP_VERSION="2.0.1"
 JDK_CONFIG_HOME="${HOME}/.config/jdk2"
 JDK_JAVA_HOME="${JDK_CONFIG_HOME}/candidates"
 
@@ -37,7 +37,7 @@ function install_jdk() {
   fi
 
   # Download the JDK
-  wget -O "${JDK_JAVA_HOME}/${version}.tar.gz" "${url}"
+  wget -O "${JDK_JAVA_HOME}/${version}.tar.gz" "${url}" -q --show-progress
   # Extract the JDK
   mkdir -p "${JDK_JAVA_HOME}/${version}/${version}.jdk" && tar xf "${JDK_JAVA_HOME}/${version}.tar.gz" -C "${JDK_JAVA_HOME}/${version}/${version}.jdk" --strip-components 1
   # Create a symlink to the JDK
