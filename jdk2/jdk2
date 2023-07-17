@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # This wrapper is used to manage JDK installations without the need for SDKMAN.
 
+bold="$(tput bold)"
+reset="$(tput sgr0)"
+red="$(tput setaf 1)"
+green="$(tput setaf 2)"
+
 JDK_APP_VERSION="2.0.1"
 JDK_CONFIG_HOME="${HOME}/.config/jdk2"
 JDK_JAVA_HOME="${JDK_CONFIG_HOME}/candidates"
@@ -18,12 +23,19 @@ fi
 # $2: The version of the JDK to install. Optional.
 function install_jdk() {
   if [ -z "${1}" ]; then
-    echo "No URL provided to install JDK from."
+    echo "[${red}ERROR${reset}] No URL provided to install JDK from."
+    print_jdk_websites
     exit 1
   fi
 
   local url="${1}"
   local version="${2}"
+
+  # Check if url is tarball
+  if [[ "${url}" != *.tar.gz ]]; then
+    echo "[${red}ERROR${reset}] URL ${url} is not a tarball."
+    exit 1
+  fi
 
   # if $2/$version is not provided, prompt the user for the version. This version is mandatory
   while [ -z "${version}" ]; do
@@ -32,12 +44,13 @@ function install_jdk() {
 
   # Check if version is already installed
   if [ -f "${JDK_CONFIG_HOME}/${version}" ]; then
-    echo "JDK version ${version} is already installed."
+    echo "[${red}ERROR${reset}] JDK version ${version} is already installed."
     exit 1
   fi
 
   # Download the JDK
-  wget -O "${JDK_JAVA_HOME}/${version}.tar.gz" "${url}" -q --show-progress
+  echo "[${green}INFO${reset}] Downloading JDK ${version} from ${url}"
+  wget --output-document="${JDK_JAVA_HOME}/${version}.tar.gz" --quiet --show-progress "${url}"
   # Extract the JDK
   mkdir -p "${JDK_JAVA_HOME}/${version}/${version}.jdk" && tar xf "${JDK_JAVA_HOME}/${version}.tar.gz" -C "${JDK_JAVA_HOME}/${version}/${version}.jdk" --strip-components 1
   # Create a symlink to the JDK
@@ -58,7 +71,16 @@ function install_jdk() {
   rm "${JDK_JAVA_HOME}/${version}.tar.gz"
 
   # Add version to jenv
-  jenv add "${version}" "${JDK_JAVA_HOME}/${version}"
+  jenv add "${version}" "${JDK_JAVA_HOME}/${version}" >/dev/null 2>&1
+
+  # Check if previous command ended with an error
+  if [ $? -ne 0 ]; then
+    echo "[${red}ERROR${reset}] Failed to install JDK version ${version}."
+    rm -rf "${JDK_JAVA_HOME}/${version}"
+    exit 1
+  fi
+
+  echo "[${green}INFO${reset}] Successfully installed JDK version ${version}."
 
   # Add version to JDK config
   touch "${JDK_CONFIG_HOME}/${version}"
@@ -71,12 +93,12 @@ function install_jdk() {
 function uninstall_entrypoint() {
   local version="${1}"
   if [ -z "${version}" ]; then
-    echo "No version provided to uninstall JDK or alias."
+    echo "[${red}ERROR${reset}] No version provided to uninstall JDK or alias."
     exit 1
   fi
   # Check if the version is installed
   if [ ! -f "${JDK_CONFIG_HOME}/${version}" ]; then
-    echo "JDK version or alias ${version} is not installed."
+    echo "[${red}ERROR${reset}] JDK version or alias ${version} is not installed."
     exit 1
   fi
 
@@ -133,13 +155,21 @@ function remove_jdk() {
   rm -rf "${JDK_JAVA_HOME}/${version}"
 
   # Remove version from jenv
-  jenv remove "${version}"
+  jenv remove "${version}" >/dev/null 2>&1
+
+  # Check if previous command ended with an error
+  if [ $? -ne 0 ]; then
+    echo "[${red}ERROR${reset}] Failed to uninstall JDK version ${version}."
+    exit 1
+  fi
 
   # Remove alias for version
   remove_alias_for_jdk "${version}"
 
   # Remove version from jdk
   rm "${JDK_CONFIG_HOME}/${version}"
+
+  echo "[${green}INFO${reset}] Successfully uninstalled JDK version ${version}."
 }
 
 # This function removes the alias for provided JDK version.
@@ -147,7 +177,7 @@ function remove_jdk() {
 function remove_alias_for_jdk() {
   local version="${1}"
   if [ -z "${version}" ]; then
-    echo "No version provided to remove alias for JDK."
+    echo "[${red}ERROR${reset}] No version provided to remove alias for JDK."
     exit 1
   fi
 
@@ -158,11 +188,17 @@ function remove_alias_for_jdk() {
     fi
     #Check if the file is an alias for the provided version, if so, remove it.
     if [ "$(cat "${full_path}")" == "${version}" ]; then
-      jenv remove "$(basename "${full_path}")"
+      jenv remove "$(basename "${full_path}")" >/dev/null 2>&1
+      if [ $? -ne 0 ]; then
+        echo "[${red}ERROR${reset}] Failed to remove alias $(basename "${full_path}") for JDK version ${version}."
+        exit 1
+      fi
       rm "${full_path}"
+      echo "[${green}INFO${reset}] Successfully removed alias $(basename "${full_path}") for JDK version ${version}."
       break
     fi
   done
+
 }
 
 # This function is used to set an alias for a JDK version.
@@ -170,13 +206,13 @@ function remove_alias_for_jdk() {
 function alias_for_jdk() {
   local version="${1}"
   if [ -z "${version}" ]; then
-    echo "No version provided to set alias for JDK."
+    echo "[${red}ERROR${reset}] No version provided to set alias for JDK."
     exit 1
   fi
 
   # Check if the version is installed
   if [ ! -d "${JDK_JAVA_HOME}/${version}" ]; then
-    echo "JDK version ${version} is not installed."
+    echo "[${red}ERROR${reset}] JDK version ${version} is not installed."
     exit 1
   fi
 
@@ -190,12 +226,19 @@ function alias_for_jdk() {
 
   # Check if the alias is already in use
   if [ -f "${JDK_CONFIG_HOME}/${alias}" ]; then
-    echo "Alias ${alias} -> $(cat ${JDK_CONFIG_HOME}/${alias}) is already in use. Remove it with the uninstall command first."
+    echo "[${red}ERROR${reset}] Alias ${alias} -> $(cat ${JDK_CONFIG_HOME}/${alias}) is already in use. Remove it with the uninstall command first."
     exit 1
   fi
 
   echo "${version}" >"${JDK_CONFIG_HOME}/${alias}"
-  jenv add "${alias}" "${JDK_JAVA_HOME}/${version}"
+  jenv add "${alias}" "${JDK_JAVA_HOME}/${version}" >/dev/null 2>&1
+
+  if [ $? -ne 0 ]; then
+    echo "[${red}ERROR${reset}] Alias ${alias} -> ${version} could not be set."
+    exit 1
+  fi
+
+  echo "[${green}INFO${reset}] Alias ${alias} -> ${version} set."
 
 }
 
@@ -216,7 +259,7 @@ function add_alias_to_existing_jdk() {
     done
     version=$(printf '%s\n' "${versions[@]}" | yank)
     if [ -z "$version" ]; then
-      echo "No version provided to add alias to JDK."
+      echo "[${red}ERROR${reset}] No version provided to add alias to JDK."
       exit 1
     fi
 
@@ -224,7 +267,7 @@ function add_alias_to_existing_jdk() {
 
   # Check if the version is installed
   if [ ! -d "${JDK_JAVA_HOME}/${version}" ]; then
-    echo "JDK version ${version} is not installed."
+    echo "[${red}ERROR${reset}] JDK version ${version} is not installed."
     exit 1
   fi
 
@@ -263,7 +306,7 @@ function active_jdk() {
 
 # This function is used to set the local JDK version.
 # $1: The version of the JDK to set as local. Optional.
-set_local_jdk() {
+function set_local_jdk() {
   if [ -z "${1}" ]; then
     local versions=()
     for line in "${JDK_CONFIG_HOME}"/*; do
@@ -279,13 +322,20 @@ set_local_jdk() {
   else
     local version=${1}
   fi
+
+  # Check if version is installed
+  if [ ! -d "${JDK_JAVA_HOME}/${version}" ]; then
+    echo "[${red}ERROR${reset}] JDK version ${version} is not installed."
+    exit 1
+  fi
+
   jenv local "${version}"
-  echo "Local JDK set to ${version}"
+  echo "[${green}INFO${reset}] Local JDK set to ${version}"
 }
 
 # This function is used to set the global JDK version.
 # $1: The version of the JDK to set as global. Optional.
-set_global_jdk() {
+function set_global_jdk() {
   if [ -z "${1}" ]; then
     local versions=()
     for line in "${JDK_CONFIG_HOME}"/*; do
@@ -303,6 +353,15 @@ set_global_jdk() {
   fi
   jenv global "${version}"
   echo "Global JDK set to ${version}"
+}
+
+function print_jdk_websites() {
+  echo "Resources for downloading JDKs:"
+  echo "  Amazon Corretto: https://aws.amazon.com/corretto/"
+  echo "  Azul Zulu:       https://www.azul.com/downloads/"
+  echo "  OpenJDK:         https://jdk.java.net/"
+  echo "  Oracle JDK:      https://www.oracle.com/java/technologies/downloads/"
+  echo "  Temurin:         https://adoptium.net/temurin/releases/"
 }
 
 if [ "${1}" == "install" ]; then
