@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # This wrapper is used to manage JDK installations without the need for SDKMAN.
 
+set -o errexit
+set -o pipefail
+
 bold="$(tput bold)"
 reset="$(tput sgr0)"
 red="$(tput setaf 1)"
@@ -23,7 +26,7 @@ fi
 # $2: The version of the JDK to install. Optional.
 function install_jdk() {
   if [ -z "${1}" ]; then
-    echo "[${red}ERROR${reset}] No URL provided to install JDK from."
+    echo "[${red}ERROR${reset}] No URL provided to install JDK from." >&2
     print_jdk_websites
     exit 1
   fi
@@ -33,7 +36,7 @@ function install_jdk() {
 
   # Check if url is tarball
   if [[ "${url}" != *.tar.gz ]]; then
-    echo "[${red}ERROR${reset}] URL ${url} is not a tarball."
+    echo "[${red}ERROR${reset}] URL ${url} is not a tarball." >&2
     exit 1
   fi
 
@@ -44,7 +47,7 @@ function install_jdk() {
 
   # Check if version is already installed
   if [ -f "${JDK_CONFIG_HOME}/${version}" ]; then
-    echo "[${red}ERROR${reset}] JDK version ${version} is already installed."
+    echo "[${red}ERROR${reset}] JDK version ${version} is already installed." >&2
     exit 1
   fi
 
@@ -53,19 +56,32 @@ function install_jdk() {
   wget --output-document="${JDK_JAVA_HOME}/${version}.tar.gz" --quiet --show-progress "${url}"
   # Extract the JDK
   mkdir -p "${JDK_JAVA_HOME}/${version}/${version}.jdk" && tar xf "${JDK_JAVA_HOME}/${version}.tar.gz" -C "${JDK_JAVA_HOME}/${version}/${version}.jdk" --strip-components 1
+
+  # Check if OS is linux or mac
+  if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    # Set path_substring for linux
+    path_substring=".jdk/"
+  elif [[ "$OSTYPE" == "darwin"* ]]; then
+    # Set path_substring for mac
+    path_substring=".jdk/Contents/Home/"
+  else
+    echo "[${red}ERROR${reset}] Unsupported OS." >&2
+    exit 1
+  fi
+
   # Create a symlink to the JDK
-  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/DISCLAIMER" "${JDK_JAVA_HOME}/${version}/DISCLAIMER"
-  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/Welcome.html" "${JDK_JAVA_HOME}/${version}/Welcome.html"
-  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/bin" "${JDK_JAVA_HOME}/${version}/bin"
-  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/conf" "${JDK_JAVA_HOME}/${version}/conf"
-  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/demo" "${JDK_JAVA_HOME}/${version}/demo"
-  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/include" "${JDK_JAVA_HOME}/${version}/include"
-  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/jmods" "${JDK_JAVA_HOME}/${version}/jmods"
-  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/legal" "${JDK_JAVA_HOME}/${version}/legal"
-  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/lib" "${JDK_JAVA_HOME}/${version}/lib"
-  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/man" "${JDK_JAVA_HOME}/${version}/man"
-  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/readme.txt" "${JDK_JAVA_HOME}/${version}/readme.txt"
-  ln -s "${JDK_JAVA_HOME}/${version}/${version}.jdk/Contents/Home/release" "${JDK_JAVA_HOME}/${version}/release"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}${path_substring}DISCLAIMER" "${JDK_JAVA_HOME}/${version}/DISCLAIMER"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}${path_substring}Welcome.html" "${JDK_JAVA_HOME}/${version}/Welcome.html"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}${path_substring}bin" "${JDK_JAVA_HOME}/${version}/bin"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}${path_substring}conf" "${JDK_JAVA_HOME}/${version}/conf"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}${path_substring}demo" "${JDK_JAVA_HOME}/${version}/demo"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}${path_substring}include" "${JDK_JAVA_HOME}/${version}/include"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}${path_substring}jmods" "${JDK_JAVA_HOME}/${version}/jmods"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}${path_substring}legal" "${JDK_JAVA_HOME}/${version}/legal"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}${path_substring}lib" "${JDK_JAVA_HOME}/${version}/lib"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}${path_substring}man" "${JDK_JAVA_HOME}/${version}/man"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}${path_substring}readme.txt" "${JDK_JAVA_HOME}/${version}/readme.txt"
+  ln -s "${JDK_JAVA_HOME}/${version}/${version}${path_substring}release" "${JDK_JAVA_HOME}/${version}/release"
 
   # Remove the downloaded tarball
   rm "${JDK_JAVA_HOME}/${version}.tar.gz"
@@ -75,7 +91,7 @@ function install_jdk() {
 
   # Check if previous command ended with an error
   if [ $? -ne 0 ]; then
-    echo "[${red}ERROR${reset}] Failed to install JDK version ${version}."
+    echo "[${red}ERROR${reset}] Failed to install JDK version ${version}." >&2
     rm -rf "${JDK_JAVA_HOME}/${version}"
     exit 1
   fi
@@ -93,12 +109,12 @@ function install_jdk() {
 function uninstall_entrypoint() {
   local version="${1}"
   if [ -z "${version}" ]; then
-    echo "[${red}ERROR${reset}] No version provided to uninstall JDK or alias."
+    echo "[${red}ERROR${reset}] No version provided to uninstall JDK or alias." >&2
     exit 1
   fi
   # Check if the version is installed
   if [ ! -f "${JDK_CONFIG_HOME}/${version}" ]; then
-    echo "[${red}ERROR${reset}] JDK version or alias ${version} is not installed."
+    echo "[${red}ERROR${reset}] JDK version or alias ${version} is not installed." >&2
     exit 1
   fi
 
@@ -159,7 +175,7 @@ function remove_jdk() {
 
   # Check if previous command ended with an error
   if [ $? -ne 0 ]; then
-    echo "[${red}ERROR${reset}] Failed to uninstall JDK version ${version}."
+    echo "[${red}ERROR${reset}] Failed to uninstall JDK version ${version}." >&2
     exit 1
   fi
 
@@ -177,7 +193,7 @@ function remove_jdk() {
 function remove_alias_for_jdk() {
   local version="${1}"
   if [ -z "${version}" ]; then
-    echo "[${red}ERROR${reset}] No version provided to remove alias for JDK."
+    echo "[${red}ERROR${reset}] No version provided to remove alias for JDK." >&2
     exit 1
   fi
 
@@ -190,7 +206,7 @@ function remove_alias_for_jdk() {
     if [ "$(cat "${full_path}")" == "${version}" ]; then
       jenv remove "$(basename "${full_path}")" >/dev/null 2>&1
       if [ $? -ne 0 ]; then
-        echo "[${red}ERROR${reset}] Failed to remove alias $(basename "${full_path}") for JDK version ${version}."
+        echo "[${red}ERROR${reset}] Failed to remove alias $(basename "${full_path}") for JDK version ${version}." >&2
         exit 1
       fi
       rm "${full_path}"
@@ -206,13 +222,13 @@ function remove_alias_for_jdk() {
 function alias_for_jdk() {
   local version="${1}"
   if [ -z "${version}" ]; then
-    echo "[${red}ERROR${reset}] No version provided to set alias for JDK."
+    echo "[${red}ERROR${reset}] No version provided to set alias for JDK." >&2
     exit 1
   fi
 
   # Check if the version is installed
   if [ ! -d "${JDK_JAVA_HOME}/${version}" ]; then
-    echo "[${red}ERROR${reset}] JDK version ${version} is not installed."
+    echo "[${red}ERROR${reset}] JDK version ${version} is not installed." >&2
     exit 1
   fi
 
@@ -226,7 +242,7 @@ function alias_for_jdk() {
 
   # Check if the alias is already in use
   if [ -f "${JDK_CONFIG_HOME}/${alias}" ]; then
-    echo "[${red}ERROR${reset}] Alias ${alias} -> $(cat ${JDK_CONFIG_HOME}/${alias}) is already in use. Remove it with the uninstall command first."
+    echo "[${red}ERROR${reset}] Alias ${alias} -> $(cat ${JDK_CONFIG_HOME}/${alias}) is already in use. Remove it with the uninstall command first." >&2
     exit 1
   fi
 
@@ -234,7 +250,7 @@ function alias_for_jdk() {
   jenv add "${alias}" "${JDK_JAVA_HOME}/${version}" >/dev/null 2>&1
 
   if [ $? -ne 0 ]; then
-    echo "[${red}ERROR${reset}] Alias ${alias} -> ${version} could not be set."
+    echo "[${red}ERROR${reset}] Alias ${alias} -> ${version} could not be set." >&2
     exit 1
   fi
 
@@ -259,7 +275,7 @@ function add_alias_to_existing_jdk() {
     done
     version=$(printf '%s\n' "${versions[@]}" | yank)
     if [ -z "$version" ]; then
-      echo "[${red}ERROR${reset}] No version provided to add alias to JDK."
+      echo "[${red}ERROR${reset}] No version provided to add alias to JDK." >&2
       exit 1
     fi
 
@@ -267,7 +283,7 @@ function add_alias_to_existing_jdk() {
 
   # Check if the version is installed
   if [ ! -d "${JDK_JAVA_HOME}/${version}" ]; then
-    echo "[${red}ERROR${reset}] JDK version ${version} is not installed."
+    echo "[${red}ERROR${reset}] JDK version ${version} is not installed." >&2
     exit 1
   fi
 
@@ -276,7 +292,7 @@ function add_alias_to_existing_jdk() {
 }
 
 function print_version() {
-  echo "jdk2 (c) Mark Hendriks <thecheerfuldev>"
+  echo "jdk2 © Mark Hendriks <thecheerfuldev>"
   echo "Version ${JDK_APP_VERSION}"
 }
 
@@ -325,7 +341,7 @@ function set_local_jdk() {
 
   # Check if version is installed
   if [ ! -d "${JDK_JAVA_HOME}/${version}" ]; then
-    echo "[${red}ERROR${reset}] JDK version ${version} is not installed."
+    echo "[${red}ERROR${reset}] JDK version ${version} is not installed." >&2
     exit 1
   fi
 
@@ -384,7 +400,7 @@ elif [ "${1}" == "version" ]; then
   print_version
 else
   # Print the help message
-  echo "Usage: jdk2 <command> [<args>]"
+  echo "Usage: jdk <command> [<args>]"
   echo ""
   echo "Commands:"
   echo "  install <url> [<version>]   Install a JDK from the provided URL."
