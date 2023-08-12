@@ -340,7 +340,7 @@ function set_local_jdk() {
   fi
 
   # Check if version is installed
-  if [ ! -d "${JDK_JAVA_HOME}/${version}" ]; then
+  if [ ! -f "${JDK_CONFIG_HOME}/${version}" ]; then
     echo "[${red}ERROR${reset}] JDK version ${version} is not installed." >&2
     exit 1
   fi
