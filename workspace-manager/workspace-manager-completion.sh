@@ -3,7 +3,6 @@
 function __workspace-manager-completion() {
   local cur prev opts
   COMPREPLY=()
-  WORKSPACES_DIRECTORY="/Users/mark/dev/thecheerfuldev/other/my-workspaces"
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD - 1]}"
   opts="list ls ps activate clear"
@@ -15,7 +14,7 @@ function __workspace-manager-completion() {
 
   case "${prev}" in
   activate)
-    COMPREPLY=($(compgen -W "$(ls "${WORKSPACES_DIRECTORY}")" -- "${cur}"))
+    COMPREPLY=($(compgen -W "$(ls "${WSM_WORKSPACES_DIRECTORY}")" -- "${cur}"))
     return 0
     ;;
   *)
