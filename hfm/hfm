@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+set -o errexit
+set -o pipefail
+
+HFM_VERSION="0.0.1"
+HFM_CONFIG_HOME="${HOME}/.config/hfm"
+
+# Create the config directory if it doesn't exist
+if [[ ! -d "${HFM_CONFIG_HOME}" ]]; then
+  mkdir -p "${HFM_CONFIG_HOME}"
+fi
+
+main() {
+  echo "Hello from hfm ${HFM_VERSION}"
+}
+
+main "$@"

@@ -78,7 +78,7 @@ sshconfig_verify() {
 }
 
 sshconfig_version() {
-  echo "sshconfig (c) Mark Hendriks <thecheerfuldev"
+  echo "sshconfig (c) Mark Hendriks <thecheerfuldev>"
   echo "Version $SSHCONFIG_VERSION"
 }
 

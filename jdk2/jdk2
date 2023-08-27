@@ -21,6 +21,22 @@ if [ ! -d "${JDK_JAVA_HOME}" ]; then
   mkdir -p "${JDK_JAVA_HOME}"
 fi
 
+function completion() {
+  SOURCE=${BASH_SOURCE[0]}
+  while [ -L "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+    DIR=$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)
+    SOURCE=$(readlink "$SOURCE")
+    [[ $SOURCE != /* ]] && SOURCE=$DIR/$SOURCE # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+  done
+  DIR=$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)
+
+  cat ${DIR}/jdk2-completion.sh
+
+  exit 0
+}
+
+# This function is for the jdk completion that completes the local JDK versions.
+
 # This function is used to install a JDK version.
 # $1: The url to download the JDK from. Mandatory.
 # $2: The version of the JDK to install. Optional.
@@ -60,13 +76,10 @@ function install_jdk() {
   # Check if OS is linux or mac
   if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     # Set path_substring for linux
-    path_substring=".jdk/"
+    local path_substring=".jdk/"
   elif [[ "$OSTYPE" == "darwin"* ]]; then
     # Set path_substring for mac
-    path_substring=".jdk/Contents/Home/"
-  else
-    echo "[${red}ERROR${reset}] Unsupported OS." >&2
-    exit 1
+    local path_substring=".jdk/Contents/Home/"
   fi
 
   # Create a symlink to the JDK
@@ -380,26 +393,7 @@ function print_jdk_websites() {
   echo "  Temurin:         https://adoptium.net/temurin/releases/"
 }
 
-if [ "${1}" == "install" ]; then
-  install_jdk "${2}" "${3}"
-elif [ "${1}" == "uninstall" ] || [ "${1}" == "rm" ]; then
-  uninstall_entrypoint "${2}"
-elif [ "${1}" == "list" ] || [ "${1}" == "ls" ]; then
-  list_jdk
-elif [ "${1}" == "alias" ]; then
-  add_alias_to_existing_jdk "${2}"
-elif [ "${1}" == "clear" ]; then
-  clear_local_jdk
-elif [ "${1}" == "active" ] || [ "${1}" == "ps" ]; then
-  active_jdk
-elif [ "${1}" == "local" ]; then
-  set_local_jdk "${2}"
-elif [ "${1}" == "global" ]; then
-  set_global_jdk "${2}"
-elif [ "${1}" == "version" ]; then
-  print_version
-else
-  # Print the help message
+function print_help_info() {
   echo "Usage: jdk <command> [<args>]"
   echo ""
   echo "Commands:"
@@ -413,4 +407,32 @@ else
   echo "  clear                       Clears the local application-specific JDK, if one is set in the current directory."
   echo "  version                     Print the version information of the JDK wrapper."
   echo ""
-fi
+}
+
+function main() {
+  if [ "${1}" == "install" ]; then
+    install_jdk "${2}" "${3}"
+  elif [ "${1}" == "uninstall" ] || [ "${1}" == "rm" ]; then
+    uninstall_entrypoint "${2}"
+  elif [ "${1}" == "list" ] || [ "${1}" == "ls" ]; then
+    list_jdk
+  elif [ "${1}" == "alias" ]; then
+    add_alias_to_existing_jdk "${2}"
+  elif [ "${1}" == "clear" ]; then
+    clear_local_jdk
+  elif [ "${1}" == "active" ] || [ "${1}" == "ps" ]; then
+    active_jdk
+  elif [ "${1}" == "local" ]; then
+    set_local_jdk "${2}"
+  elif [ "${1}" == "global" ]; then
+    set_global_jdk "${2}"
+  elif [ "${1}" == "version" ]; then
+    print_version
+  elif [ "${1}" == "completion" ]; then
+    completion
+  else
+    print_help_info
+  fi
+}
+
+main "${@}"
