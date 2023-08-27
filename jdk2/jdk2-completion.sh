@@ -14,7 +14,7 @@ function __jdk2-completion() {
   fi
 
   case "${prev}" in
-  local | global)
+  local | global | alias | uninstall | rm)
     COMPREPLY=($(compgen -W "$(ls -p "${JDK_CONFIG_HOME}" | grep -v /)" -- "${cur}"))
     return 0
     ;;

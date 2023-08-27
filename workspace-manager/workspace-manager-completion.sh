@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-function __workspace-manager-completion() {
+function _workspace-manager-completion() {
   local cur prev opts
   COMPREPLY=()
   cur="${COMP_WORDS[COMP_CWORD]}"
@@ -23,4 +23,4 @@ function __workspace-manager-completion() {
   esac
 }
 
-complete -F __workspace-manager-completion workspace-manager
+complete -F _workspace-manager-completion workspace-manager
